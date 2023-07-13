@@ -90,6 +90,28 @@ float vddVoltage;
 #define VREFINT_VOLTAGE 3
 uint16_t vrefintCalibrationValue;
 
+#ifdef Timing_Test
+uint32_t interrupt_time1 = 0;
+uint32_t interrupt_time2 = 0;
+uint32_t key1_time1 = 0;
+uint32_t key1_time2 = 0;
+uint32_t key2_time1 = 0;
+uint32_t key2_time2 = 0;
+uint32_t key3_time1 = 0;
+uint32_t key3_time2 = 0;
+uint32_t key4_time1 = 0;
+uint32_t key4_time2 = 0;
+uint32_t key1_time = 0;
+uint32_t key2_time = 0;
+uint32_t key3_time = 0;
+uint32_t key4_time = 0;
+uint32_t interrupt_time = 0;
+uint32_t time_total = 0;
+uint32_t ADC_time1 = 0;
+uint32_t ADC_time2 = 0;
+uint32_t interrupt_counter = 0;
+#endif
+
 uint8_t Read_Button_ID(void)
 {
 	uint8_t Addr = 0;
@@ -136,8 +158,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 #ifndef Debug
   HAL_UART_Transmit(&hlpuart1, (uint8_t *)"WAKEUP from EXTI\n\n",18, HAL_MAX_DELAY);
 #endif
-
-
+#ifdef Timing_Test
+  interrupt_time1 = HAL_GetTick();
+#endif
   for (volatile uint32_t i = 0; i < 100000; i++);
 
   Press_Counter++;
@@ -179,6 +202,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
   HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
   HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
+
+#ifdef Timing_Test
+  interrupt_time2 = HAL_GetTick();
+#endif
 }
 
 /* USER CODE END 0 */
@@ -249,15 +276,26 @@ int main(void)
 	  //HAL_Delay(500);
 
 	  // Start ADC conversion
-
+#ifdef Timing_Test
+	  ADC_time1 = HAL_GetTick();
+#endif
 	  HAL_ADC_Start(&hadc);
 
-	  if (HAL_ADC_PollForConversion(&hadc, HAL_MAX_DELAY) == HAL_OK)
+	  if (HAL_ADC_PollForConversion(&hadc, 50) == HAL_OK)
 	  {
 		  adcValue = HAL_ADC_GetValue(&hadc);
 		  vrefintCalibrationValue = *VREFINT_CAL_ADDR;
 		  // Calculate VDD voltage
 		  vddVoltage = ((float)vrefintCalibrationValue * VREFINT_VOLTAGE) / (float)adcValue;
+		  vddVoltage = vddVoltage * 1.04;             //Based on the calculations and measurements, the MCU voltage usually be read %4 less than actual value
+
+#ifdef Batt_Voltage_Test
+		  char VDD_buffer[10];  // Buffer to hold the converted string
+		  sprintf(VDD_buffer, "%.3f", vddVoltage);  // Convert integer to string
+		  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"vddVoltage: ", 12, 1000);
+		  HAL_UART_Transmit(&hlpuart1, (uint8_t*)VDD_buffer, strlen(VDD_buffer), 1000);
+		  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n", 1, 1000);
+#endif
 
 		  if(vddVoltage < 3)
 		  {
@@ -270,14 +308,23 @@ int main(void)
 	  }
 	  else
 	  {
-		  HAL_UART_Transmit(&hlpuart1, (uint8_t *)"ADC ERROR\n", 10, 100);
+		  HAL_UART_Transmit(&hlpuart1, (uint8_t *)"ADC ERROR\n", 10, 10);
 	  }
+#ifdef Timing_Test
+	  ADC_time2 = HAL_GetTick();
+#endif
 
 	  HAL_Delay(1);
 	  //key1
 	  if (Pressed_Key == 1)
 	  {
+#ifdef Timing_Test
+		  key1_time1 = HAL_GetTick();
+#endif
 		  Pressed_Key = 0;
+
+		  TxData[1] = 1;
+		  nRF24_Transmit(nRF_CSN_Pin, TxData, Packet_Size);
 
 		  //Check for the Battery Voltage to select the LED Color 2n4 a   1n3 b
 		  while(HAL_GPIO_ReadPin(GPIOB, Key_IN1_Pin) == GPIO_PIN_SET)
@@ -293,18 +340,23 @@ int main(void)
 		  }
 		  HAL_GPIO_WritePin(GPIOB, LED_RED_Pin, GPIO_PIN_SET);
 		  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_SET);
-
-		  TxData[1] = 1;
-		  nRF24_Transmit(nRF_CSN_Pin, TxData, Packet_Size);
 #ifndef Debug
 		  nRF24_Transmit_Report(nRF_CSN_Pin);
 #endif
-
+#ifdef Timing_Test
+		  key1_time2 = HAL_GetTick();
+#endif
 	  }
 	  //key2
 	  if (Pressed_Key == 2)
 	  {
+#ifdef Timing_Test
+		  key2_time1 = HAL_GetTick();
+#endif
 		  Pressed_Key = 0;
+
+		  TxData[1] = 2;
+		  nRF24_Transmit(nRF_CSN_Pin, TxData, Packet_Size);
 
 		  //Check the Battery Voltage to select the LED Color 2n4 a   1n3 b
 		  while(HAL_GPIO_ReadPin(GPIOA, Key_IN2_Pin) == GPIO_PIN_SET)
@@ -320,18 +372,23 @@ int main(void)
 		  }
 		  HAL_GPIO_WritePin(GPIOB, LED_RED_Pin, GPIO_PIN_SET);
 		  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_SET);
-
-		  TxData[1] = 2;
-		  nRF24_Transmit(nRF_CSN_Pin, TxData, Packet_Size);
 #ifndef Debug
 		  nRF24_Transmit_Report(nRF_CSN_Pin);
 #endif
-
+#ifdef Timing_Test
+		  key2_time2 = HAL_GetTick();
+#endif
 	  }
 	  //key3
 	  if (Pressed_Key == 3)
 	  {
+#ifdef Timing_Test
+		  key3_time1 = HAL_GetTick();
+#endif
 		  Pressed_Key = 0;
+
+		  TxData[1] = 3;
+		  nRF24_Transmit(nRF_CSN_Pin, TxData, Packet_Size);
 
 		  //Check for the Battery Voltage to select the LED Color 2n4 a   1n3 b
 		  while(HAL_GPIO_ReadPin(GPIOB, Key_IN3_Pin) == GPIO_PIN_SET)
@@ -347,19 +404,24 @@ int main(void)
 		  }
 		  HAL_GPIO_WritePin(GPIOB, LED_RED_Pin, GPIO_PIN_SET);
 		  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_SET);
-
-		  TxData[1] = 3;
-		  nRF24_Transmit(nRF_CSN_Pin, TxData, Packet_Size);
 #ifndef Debug
 		  nRF24_Transmit_Report(nRF_CSN_Pin);
 #endif
-
+#ifdef Timing_Test
+		  key3_time2 = HAL_GetTick();
+#endif
 	  }
 
 	  //key4
 	  if (Pressed_Key == 4)
 	  {
+#ifdef Timing_Test
+		  key4_time1 = HAL_GetTick();
+#endif
 		  Pressed_Key = 0;
+
+		  TxData[1] = 4;
+		  nRF24_Transmit(nRF_CSN_Pin, TxData, Packet_Size);
 
 		  //Check for the Battery Voltage to select the LED Color 2n4 a   1n3 b
 		  while(HAL_GPIO_ReadPin(GPIOA, Key_IN4_Pin) == GPIO_PIN_SET)
@@ -375,13 +437,12 @@ int main(void)
 		  }
 		  HAL_GPIO_WritePin(GPIOB, LED_RED_Pin, GPIO_PIN_SET);
 		  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_SET);
-
-		  TxData[1] = 4;
-		  nRF24_Transmit(nRF_CSN_Pin, TxData, Packet_Size);
 #ifndef Debug
 		  nRF24_Transmit_Report(nRF_CSN_Pin);
 #endif
-
+#ifdef Timing_Test
+		  key4_time2 = HAL_GetTick();
+#endif
 	  }
 
 	  HAL_Delay(1);
@@ -389,6 +450,67 @@ int main(void)
 	  char *message = "About to Go into the STOP mode\n\n";
 	  HAL_UART_Transmit(&hlpuart1, (uint8_t *)message, strlen (message), 100);    //Last Words
 #endif
+#ifdef Timing_Test
+	  key1_time = key1_time2 - key1_time1;
+	  key1_time1 = 0;
+	  key1_time2 = 0;
+	  key2_time = key2_time2 - key2_time1;
+	  key2_time1 = 0;
+	  key2_time2 = 0;
+	  key3_time = key3_time2 - key3_time1;
+	  key3_time1 = 0;
+	  key3_time2 = 0;
+	  key4_time = key4_time2 - key4_time1;
+	  key4_time1 = 0;
+	  key4_time2 = 0;
+	  time_total = key1_time + key2_time + key3_time + key4_time;
+	  interrupt_time = interrupt_time2 - interrupt_time1;
+
+
+	  char time_buffer[10];  // Buffer to hold the converted string
+
+	  sprintf(time_buffer, "%d", key1_time);  // Convert integer to string
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"key1_time: ", 11, 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)time_buffer, strlen(time_buffer), 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n", 1, 1000);
+
+	  sprintf(time_buffer, "%d", key2_time);  // Convert integer to string
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"key2_time: ", 11, 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)time_buffer, strlen(time_buffer), 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n", 1, 1000);
+
+	  sprintf(time_buffer, "%d", key3_time);  // Convert integer to string
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"key3_time: ", 11, 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)time_buffer, strlen(time_buffer), 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n", 1, 1000);
+
+	  sprintf(time_buffer, "%d", key4_time);  // Convert integer to string
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"key4_time: ", 11, 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)time_buffer, strlen(time_buffer), 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n", 1, 1000);
+
+	  sprintf(time_buffer, "%d", interrupt_time);  // Convert integer to string
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"interrupt_time: ", 16, 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)time_buffer, strlen(time_buffer), 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n", 1, 1000);
+
+	  sprintf(time_buffer, "%d", time_total);  // Convert integer to string
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"time_total: ", 12, 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)time_buffer, strlen(time_buffer), 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n", 1, 1000);
+
+	  sprintf(time_buffer, "%d", Press_Counter);  // Convert integer to string
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"Press_Counter: ", 15, 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)time_buffer, strlen(time_buffer), 1000);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n", 1, 1000);
+
+	  key1_time = 0;
+	  key2_time = 0;
+	  key3_time = 0;
+	  key4_time = 0;
+	  time_total = 0;
+#endif
+
 	  HAL_SuspendTick();                                                          //Suspend the sys tick before going into stop mode
 	  HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);         //Enter the stop mode
 
@@ -471,7 +593,7 @@ static void MX_ADC_Init(void)
   hadc.Init.OversamplingMode = DISABLE;
   hadc.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
   hadc.Init.Resolution = ADC_RESOLUTION_12B;
-  hadc.Init.SamplingTime = ADC_SAMPLETIME_19CYCLES_5;
+  hadc.Init.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
   hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
   hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc.Init.ContinuousConvMode = DISABLE;
